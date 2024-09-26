@@ -1,6 +1,6 @@
-# RDK X3 Carrier Board 使用手册
+# RDK IMU Module 使用手册
 
-- [RDK X3 Carrier Board 使用手册](#rdk-x3-carrier-board-使用手册)
+- [RDK IMU Module 使用手册](#rdk-imu-module-使用手册)
   - [1. 简介](#1-简介)
   - [2. GPIO 外设测试](#2-gpio-外设测试)
   - [3. BMI088 SPI 读取方式](#3-bmi088-spi-读取方式)
