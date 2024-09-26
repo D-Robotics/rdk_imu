@@ -9,7 +9,15 @@
 
 ## 1. 简介
 
-rdk_imu 仓库是专为使用 RDK_IMU_Module 模组及 RDK_IMU_CONNECTOR 载板的开发者设计的驱动仓库，支持在 RDK X3/X5 系列开发板上快速实现 GPIO、SPI、I2C 等接口外设的控制与驱动。该仓库提供对 BMI088 陀螺仪/加速度计的完整数据读取和处理功能，方便开发者在项目中轻松集成传感器数据采集。通过简易的 API 和示例代码，用户可以快速上手并实现对传感器数据的高效读取与分析，适用于多种物联网和嵌入式应用场景
+rdk_imu 仓库是专为使用 RDK_IMU_MODULE 模组及 RDK_IMU_CONNECTOR 载板的开发者设计的驱动仓库，支持在 RDK X3/X5 系列开发板上快速实现 GPIO、SPI、I2C 等接口外设的控制与驱动。该仓库提供对 BMI088 陀螺仪/加速度计的完整数据读取和处理功能，方便开发者在项目中轻松集成传感器数据采集。通过简易的 API 和示例代码，用户可以快速上手并实现对传感器数据的高效读取与分析，适用于多种物联网和嵌入式应用场景
+
+**RDK_IMU_MODULE 示意图**：
+
+![alt text](./data/RDK_IMU_MODULE.jpg)
+
+**RDK_IMU_CONNECTOR 示意图**：
+
+![alt text](./data/RDK_IMU_CONNECTOR.jpg)
 
 ## 2. GPIO 外设测试
 
