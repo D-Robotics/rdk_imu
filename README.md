@@ -19,9 +19,63 @@ rdk_imu 仓库是专为使用 RDK_IMU_MODULE 模组及 RDK_IMU_CONNECTOR 载板�
 
 ![alt text](./data/RDK_IMU_CONNECTOR.jpg)
 
+**RDK IMU Pin脚分布**：
+
+以下是 RDK IMU 模块的 GPIO 引脚分布信息，包括各引脚的功能、对应的 X3/X5 管脚号、BCM 编码以及物理引脚的 BOARD 编码：
+
+| **功能名**     | **X3/X5管脚号** | **BCM编码** | **物理引脚BOARD编码** |
+| ----------- | ------------ | --------- | --------------- |
+| I2C_SDA     | 9            | 2         | 3               |
+| I2C_SCL     | 8            | 3         | 5               |
+| LED1        | 6            | 17        | 11              |
+| LED2        | 5            | 27        | 13              |
+| LED3        | 30           | 22        | 15              |
+| SPI_MOSI    | 12           | 10        | 19              |
+| SPI_MISO    | 13           | 9         | 21              |
+| SPI_SCLK    | 14           | 11        | 23              |
+| SPI_CS_ACC  | 15           | 8         | 24              |
+| SPI_CS_GYRO | 28           | 7         | 26              |
+| BELL        | 118          | 6         | 31              |
+| INT_ACC     | 3            | 16        | 36              |
+| INT_GYRO    | 104          | 20        | 38              |
+| DQ_ds18b20  | 105          | 26        | 37              |
+
+**说明**：
+
+1. **I2C_SDA** 和 **I2C_SCL**：用于连接 BMI088 传感器 I2C 引脚。
+2. **LED1**、**LED2** 和 **LED3**：可用于控制 LED 灯，进行指示或状态显示。
+3. **SPI_MOSI**、**SPI_MISO**、**SPI_SCLK**、**SPI_CS_ACC** 和 **SPI_CS_GYRO**：用于 SPI 接口，连接 BMI088 加速度计和陀螺仪传感器。
+4. **BELL**：用于蜂鸣器控制。
+5. **INT_ACC** 和 **INT_GYRO**：连接 BMI088 传感器的中断引脚，接收传感器中断信号。
+6. **DQ_ds18b20**：用于连接 DS18B20 温度传感器的数据引脚。
+
+**注意事项**：
+
+1. **Python 代码**：Python 代码使用 **Hobot.GPIO 驱动**，在代码中应按照 **物理引脚 (BOARD 编码)** 进行 GPIO 引脚的调用。BOARD 编码是开发板上实际的物理引脚编号。例如，要控制 LED1 时，应使用 BOARD 编码 `11` 对应的引脚。
+
+2. **C 代码**：C 代码直接使用 **内部芯片引脚号**，即 **X3/X5 管脚号**。因此，在编写 C 代码时，应根据 X3/X5 开发板的管脚号进行引脚操作。例如，要控制 LED1 时，应使用 X3/X5 管脚号 `6` 对应的引脚。
+
+**例如**：
+
+- **Python 代码 控制 LED1**：
+
+```python
+import Hobot.GPIO as GPIO
+GPIO.setup(11, GPIO.OUT)  # 使用 BOARD 编码 11
+GPIO.output(11, GPIO.HIGH)
+```
+
+- **C 代码 控制 LED1**：
+
+```c
+#include <wiringPi.h>
+pinMode(6, OUTPUT);  // 使用 X3/X5 管脚号 6
+digitalWrite(6, HIGH);
+```
+
 ## 2. GPIO 外设测试
 
-GPIO 外设可以通过 Python 或 C 语言进行测试，具体操作步骤如下：t
+GPIO 外设可以通过 Python 或 C 语言进行测试，具体操作步骤如下：
 
 **Python 测试**：
 
