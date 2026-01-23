@@ -1,271 +1,486 @@
-# RDK IMU Module 使用手册
+# **RDK_IMU_Module_us**
+## ———— *Driver RDK IMU Module in User Space* ————
+&emsp;基于用户空间的RDK IMU Module软件包，完全不依赖iio相关驱动，仅使用linux标准通用I2C与SPI驱动<br>
+&emsp;**Version: 1.0.0**
 
-- [RDK IMU Module 使用手册](#rdk-imu-module-使用手册)
-  - [1. 简介](#1-简介)
-  - [2. GPIO 外设测试](#2-gpio-外设测试)
-  - [3. BMI088 SPI 读取方式](#3-bmi088-spi-读取方式)
-  - [4. BMI088 i2c 读取方式](#4-bmi088-i2c-读取方式)
-  - [5. DS18B20 温度传感器读取方式](#5-ds18b20-温度传感器读取方式)
+## **一、编译说明**
 
-## 1. 简介
+### **1.1.依赖说明**
 
-rdk_imu 仓库是专为使用 RDK_IMU_MODULE 模组及 RDK_IMU_CONNECTOR 载板的开发者设计的驱动仓库，支持在 RDK X3/X5 系列开发板上快速实现 GPIO、SPI、I2C 等接口外设的控制与驱动。该仓库提供对 BMI088 陀螺仪/加速度计的完整数据读取和处理功能，方便开发者在项目中轻松集成传感器数据采集。通过简易的 API 和示例代码，用户可以快速上手并实现对传感器数据的高效读取与分析，适用于多种物联网和嵌入式应用场景
+项目分为两个部分：<br>
 
-**RDK_IMU_MODULE 示意图**：
+1. **rdk_imu_module_data:** 核心部分，用于调用Linux通用SPI与I2C驱动与IMU通信，并进行数据解析与时间同步，编译需`-lm`链接math<br>
 
-![alt text](./data/RDK_IMU_MODULE.jpg)
+2. **rdk_imu_module_gpio:** 次要部分，用于驱动**RDK IMU Module**载板上的GPIO设备（LED、蜂鸣器和1-wire温度传感器），依赖**RDK wiringPi**，需要按照以下教程进行**RDK wiringPi**的安装：[在旭日X3派上移植的 WiringPi](https://gitee.com/xin03liu/WiringPi)，并在编译时`-lwiringPi`链接**wiring Pi**<br>
 
-**RDK_IMU_CONNECTOR 示意图**：
+- 不安装**RDK wiringPi**也可以使用**rdk_imu_module_data**的C部分内容，但不能使用**rdk_imu_module_gpio**和Python部分内容<br>
 
-![alt text](./data/RDK_IMU_CONNECTOR.jpg)
+### **1.2.Makefile使用**
 
-**RDK IMU Pin脚分布**：
+&emsp;项目目录下编写了Makefile，可以通过make快速编译项目，`cd /path/to/RDK_IMU_Module_us`来到项目目录，`make`或`make all`编译所有项目，或者：<br>
 
-以下是 RDK IMU 模块的 GPIO 引脚分布信息，包括各引脚的功能、对应的 X3/X5 管脚号、BCM 编码以及物理引脚的 BOARD 编码：
+1. `make static`: 编译完整功能的`.a`静态链接库到`./lib`路径下<br>
 
-| **功能名**     | **X3/X5管脚号** | **BCM编码** | **物理引脚BOARD编码** |
-| ----------- | ------------ | --------- | --------------- |
-| I2C_SDA     | 9            | 2         | 3               |
-| I2C_SCL     | 8            | 3         | 5               |
-| LED1        | 6            | 17        | 11              |
-| LED2        | 5            | 27        | 13              |
-| LED3        | 30           | 22        | 15              |
-| SPI_MOSI    | 12           | 10        | 19              |
-| SPI_MISO    | 13           | 9         | 21              |
-| SPI_SCLK    | 14           | 11        | 23              |
-| SPI_CS_ACC  | 15           | 8         | 24              |
-| SPI_CS_GYRO | 28           | 7         | 26              |
-| BELL        | 118          | 6         | 31              |
-| INT_ACC     | 3            | 16        | 36              |
-| INT_GYRO    | 104          | 20        | 38              |
-| DQ_ds18b20  | 105          | 26        | 37              |
+2. `make static-Wo-gpio`: 仅编译**rdk_imu_module_data**部分内容的`.a`静态链接库到`./lib`路径下<br>
 
-**说明**：
+3. `make dynamic`: 编译完整功能的`.so`动态链接库到`./lib`路径下<br>
 
-1. **I2C_SDA** 和 **I2C_SCL**：用于连接 BMI088 传感器 I2C 引脚。
-2. **LED1**、**LED2** 和 **LED3**：可用于控制 LED 灯，进行指示或状态显示。
-3. **SPI_MOSI**、**SPI_MISO**、**SPI_SCLK**、**SPI_CS_ACC** 和 **SPI_CS_GYRO**：用于 SPI 接口，连接 BMI088 加速度计和陀螺仪传感器。
-4. **BELL**：用于蜂鸣器控制。
-5. **INT_ACC** 和 **INT_GYRO**：连接 BMI088 传感器的中断引脚，接收传感器中断信号。
-6. **DQ_ds18b20**：用于连接 DS18B20 温度传感器的数据引脚。
+4. `make dynamic-Wo-gpio`: 仅编译**rdk_imu_module_data**部分内容的`.so`动态链接库到`./lib`路径下<br>
 
-**注意事项**：
+5. `make sample`: 编译完整功能的测试用例可执行文件到`./bin`路径下<br>
 
-1. **Python 代码**：Python 代码使用 **Hobot.GPIO 驱动**，在代码中应按照 **物理引脚 (BOARD 编码)** 进行 GPIO 引脚的调用。BOARD 编码是开发板上实际的物理引脚编号。例如，要控制 LED1 时，应使用 BOARD 编码 `11` 对应的引脚。
+6. `make sample-Wo-gpio`: 仅编译**rdk_imu_module_data**部分内容的测试用例可执行文件到`./bin`路径下<br>
 
-2. **C 代码**：C 代码直接使用 **内部芯片引脚号**，即 **X3/X5 管脚号**。因此，在编写 C 代码时，应根据 X3/X5 开发板的管脚号进行引脚操作。例如，要控制 LED1 时，应使用 X3/X5 管脚号 `6` 对应的引脚。
+7. `make cython`: 编译Cython部分内容<br>
 
-**例如**：
+8. `make clean`: 清理所有内容<br>
 
-- **Python 代码 控制 LED1**：
+## **二、Python-Sample快速体验**
 
-```python
-import Hobot.GPIO as GPIO
-GPIO.setup(11, GPIO.OUT)  # 使用 BOARD 编码 11
-GPIO.output(11, GPIO.HIGH)
-```
+### **2.1.环境准备**
 
-- **C 代码 控制 LED1**：
+#### **2.1.1.wiringPi**安装
 
-```c
-#include <wiringPi.h>
-pinMode(6, OUTPUT);  // 使用 X3/X5 管脚号 6
-digitalWrite(6, HIGH);
-```
+&emsp;按照**1.1.依赖说明**中的链接安装`RDK wiringPi`，使用命令`gpio readall`检查，输出以下内容：<br>
 
-## 2. GPIO 外设测试
-
-GPIO 外设可以通过 Python 或 C 语言进行测试，具体操作步骤如下：
-
-**Python 测试**：
-
-1. **使用 root 用户登录开发板**： 确保以 root 用户身份登录开发板，以获得对 GPIO 引脚的控制权限。
-2. **执行测试脚本**： 运行 test_GPIO.py 脚本，该脚本会控制蜂鸣器和 LED，验证是否能够正常工作。
-
-```Python
-python test_GPIO.py
-```
-
-执行后，蜂鸣器应发出响声，LED 指示灯将点亮，表示 GPIO 外设功能正常。
-
-**C 语言测试**：
-
-1. **编译 wiringPi**： 先确保已经安装好 wiringPi，确保可以直接读取 GPIO 口的状态。可以使用如下命令编译 wiringPi：
-
-```shell
-git clone https://gitee.com/study-dp/WiringPi.git
-cd WiringPi
-./build
-gpio readall
-```
-
-执行成功后，命令行会显示管脚pin口列表：
-
-```shell
-root@ubuntu:/app/40pin_samples# gpio readall
- +-----+-----+-----------+-RDK X3v2-+-----------+-----+-----+
+```text
+root@ubuntu:~/RDK_IMU_Module_us# gpio readall
+ +-----+-----+-----------+--RDK X5--+-----------+-----+-----+
  | BCM | xPi |    Name   | Physical |   Name    | xPi | BCM |
  +-----+-----+-----------+----++----+-----------+-----+-----+
  |     |     |      3.3v |  1 || 2  | 5v        |     |     |
- |   2 |   9 |     SDA.0 |  3 || 4  | 5v        |     |     |
- |   3 |   8 |     SCL.0 |  5 || 6  | 0v        |     |     |
- |   4 | 101 | I2S0_MCLK |  7 || 8  | TxD.3     | 111 | 14  |
- |     |     |        0v |  9 || 10 | RxD.3     | 112 | 15  |
- |  17 |  12 |  GPIO. 17 | 11 || 12 | I2S0_BCLK | 102 | 18  |
- |  27 |  13 |  GPIO. 27 | 13 || 14 | 0v        |     |     |
- |  22 |  30 |  GPIO. 22 | 15 || 16 | GPIO. 23  | 27  | 23  |
- |     |     |      3.3v | 17 || 18 | GPIO. 24  | 22  | 24  |
- |  10 |   6 | SPI1_MOSI | 19 || 20 | 0v        |     |     |
- |   9 |   7 | SPI1_MISO | 21 || 22 | GPIO. 25  | 29  | 25  |
- |  11 |   3 | SPI1_SCLK | 23 || 24 | SPI1_CSN  | 5   | 8   |
- |     |     |        0v | 25 || 26 | GPIO.  7  | 28  | 7   |
- |   0 |  15 |     SDA.3 | 27 || 28 | SCL.3     | 14  | 1   |
- |   5 | 119 |   GPIO. 5 | 29 || 30 | 0v        |     |     |
- |   6 | 118 |   GPIO. 6 | 31 || 32 | PWM4      | 25  | 12  |
- |  13 |   4 |      PWM0 | 33 || 34 | 0v        |     |     |
- |  19 | 103 | I2S0_LRCK | 35 || 36 | GPIO. 16  | 20  | 16  |
- |  26 | 117 |   GPIO.26 | 37 || 38 | I2S1_SDIO | 108 | 20  |
- |     |     |        0v | 39 || 40 | I2S0_SDIO | 104 | 21  |
+ |   2 | 390 |     SDA.5 |  3 || 4  | 5v        |     |     |
+ |   3 | 389 |     SCL.5 |  5 || 6  | 0v        |     |     |
+ |   4 | 420 | I2S1_MCLK |  7 || 8  | TxD.1     | 383 | 14  |
+ |     |     |        0v |  9 || 10 | RxD.1     | 384 | 15  |
+ |  17 | 380 |  GPIO. 17 | 11 || 12 | I2S1_BCLK | 421 | 18  |
+ |  27 | 379 |  GPIO. 27 | 13 || 14 | 0v        |     |     |
+ |  22 | 388 |  GPIO. 22 | 15 || 16 | GPIO. 23  | 382 | 23  |
+ |     |     |      3.3v | 17 || 18 | GPIO. 24  | 402 | 24  |
+ |  10 | 398 | SPI1_MOSI | 19 || 20 | 0v        |     |     |
+ |   9 | 397 | SPI1_MISO | 21 || 22 | GPIO. 25  | 387 | 25  |
+ |  11 | 395 | SPI1_SCLK | 23 || 24 | SPI1_CSN1 | 394 | 8   |
+ |     |     |        0v | 25 || 26 | SPI1_CSN0 | 396 | 7   |
+ |   0 | 355 |     SDA.0 | 27 || 28 | SCL.0     | 354 | 1   |
+ |   5 | 399 |   GPIO. 5 | 29 || 30 | 0v        |     |     |
+ |   6 | 400 |   GPIO. 6 | 31 || 32 | PWM6      | 356 | 12  |
+ |  13 | 357 |      PWM7 | 33 || 34 | 0v        |     |     |
+ |  19 | 422 | I2S1_LRCK | 35 || 36 | GPIO. 16  | 381 | 16  |
+ |  26 | 401 |   GPIO.26 | 37 || 38 | I2S1_DIN  | 423 | 20  |
+ |     |     |        0v | 39 || 40 | I2S1_DOUT | 424 | 21  |
  +-----+-----+-----------+----++----+-----------+-----+-----+
  | BCM | xPi |    Name   | Physical |   Name    | xPi | BCM |
- +-----+-----+-----------+-RDK X3v2-+-----------+-----+-----+
- ```
-
-2. **编译 C 语言测试代码**：在项目目录下编译提供的 C 代码。可以使用如下命令编译测试程序：
-
-```shell
-gcc -o test_GPIO test_GPIO.c -lwiringPi
+ +-----+-----+-----------+--RDK X5--+-----------+-----+-----+
 ```
 
-此命令将 test_GPIO.c 编译为可执行文件 test_GPIO，并链接所需的 WiringPi 库
+#### **2.1.2.动态链接库编译**
 
-3. **运行测试程序**：在编译完成后，通过以下命令运行测试程序：
+&emsp;项目自带一个编译好的、可用于python的`.so`动态链接库文件，位于`RDK_IMU_Module_us/Py_RDK_IMU/rdkimu.cpython-310-aarch64-linux-gnu.so`，如果确认`RDK wiringPi`已正确安装，可以直接运行sample<br>
 
-```shell
-sudo ./test_GPIO
+&emsp;如果需要重新编译Cython动态链接库，回到Makefile目录下`make cython`即可<br>
+
+### **2.2.sample执行**
+
+&emsp;来到`RDK_IMU_Module_us/Py_RDK_IMU`目录下，`python3 test_pyimu.py`执行测试用例，终端将依次输出imu地址扫描结果和imu初始化结果，随后伴随蜂鸣器的响声，**RDK IMU Module**载板上的3个LED依次闪烁，然后终端输出板载温度，最后程序将会循环读取并打印IMU的6轴数据和时间戳、温度数据<br>
+
+## **三、C-Samples快速体验**
+
+### **3.1.完整sample运行**
+
+&emsp;`cd /path/to/RDK_IMU_Module_us`来到项目目录下，通过`make sample`编译测试用例，确认编译成功后可直接运行`./bin/imu_test`文件，测试用例将会进行IMU设备的扫描与初始化，并驱动**RDK IMU Module**载板发出声光提示，输出以下内容：<br>
+
+```text
+root@ubuntu:~/RDK_IMU_Module_us# ./bin/imu_test 
+[examples/imu_test.c]Successfully detected the BMI088 device.
+[examples/imu_test.c]RDK_IMU_Accel_Reset 0
+[examples/imu_test.c]RDK_IMU_Gyro_Reset 0
+[examples/imu_test.c]IMU initialization successful 0
+[examples/imu_test.c]GPIO initialization successful 0
+[examples/imu_test.c]The 0th time obtaining the ambient temperature is 31.312500 Celsius.
+[examples/imu_test.c]The 1th time obtaining the ambient temperature is 31.312500 Celsius.
+[examples/imu_test.c]The 2th time obtaining the ambient temperature is 31.375000 Celsius.
 ```
 
-程序运行后，蜂鸣器和 LED 指示灯将按照程序设定的逻辑进行操作，验证 GPIO 引脚的工作状态。
+&emsp;然后清屏，输出IMU数据，如下：<br>
 
-![alt text](./data/gpio.png)
-
-**注意事项**
-- **权限要求**： 使用 GPIO 进行硬件控制时，务必以 root 用户身份操作，否则可能会因为权限不足导致操作失败。
-- **开发环境**： Python 测试需要在开发板上安装相应的 Python 环境和依赖库。C 语言测试则需要确保安装 WiringPi 库。
-
-## 3. BMI088 SPI 读取方式
-
-在使用 SPI 接口读取 BMI088 传感器数据之前，请先进行以下操作：
-
-1. **拨码开关设置**：确保将开发板上的拨码开关切换到 SPI 一侧，以启用 SPI 接口。拨码开关的位置如下图所示：
-
-![alt text](./data/spi.png)
-
-2. **执行 Python 测试脚本**：切换拨码开关后，可以运行 test_BMI088.py 脚本来读取传感器数据。该脚本通过 SPI 接口驱动 BMI088 传感器并获取加速度计和陀螺仪的数据。
-
-```Python
-python3 test_BMI088_SPI.py
+```text
+[imu data] accel: -0.015,  -0.012,  -1.008, timestamp: 1768881430201181
+[imu data]  gyro:  0.153,   0.580,   0.443, timestamp: 1768881430200252
+[temp data] temp: 28.875000
 ```
 
-如果配置正确，脚本会输出从 BMI088 传感器读取的实时数据，验证 SPI 接口正常工作。
+### **3.2.仅运行核心示例**
 
-**注意事项**：
-- **SPI 接口设置**： 使用 SPI 接口时，必须确保拨码开关切换正确，否则可能导致无法读取到有效数据。
-- **依赖库**： 请确认已安装必要的 Python 库和驱动，以确保脚本正常运行。
+&emsp;不安装、不链接wiringPi，仅运行核心示例，只需要使用`make sample-Wo-gpio`编译不带gpio的测试用例，将会`./bin/imu_test_without_gpio`文件，运行后程序同样会进行IMU设备的扫描与初始化，但没有声光提示，然后清屏，循环打印IMU数据<br>
 
-## 4. BMI088 i2c 读取方式
+## **四、C接口介绍**
 
-在使用 I2C 读取 BMI088 传感器数据之前，请确保完成以下操作步骤：
+&emsp;`RDK_IMU_Module_us/include/rdk_imu_module.h`中定义了驱动imu的所有函数和枚举类型，`RDK_IMU_Module_us/include/bmi088_regs.h`中则定义了BMI088芯片的所有寄存器信息以及状态枚举<br>
 
-1. **拨码开关设置**：
+### **4.1.错误枚举**
 
-首先，将开发板上的拨码开关切换到 I2C 一侧，启用 I2C 通信接口。拨码开关位置如下图所示：
+&emsp;`enum rdk_imu_error{}`枚举了所有的错误类型，该枚举类型作为大部分函数的返回值，值`RDK_IMU_OK`为无错误<br>
 
-![alt text](./data/i2c.png)
+### **4.2.data接口说明**
 
-2. **编译可执行文件**：
+- `struct imu_state`:<br>
+- IMU状态结构体，是所有imu data相关函数的重要参数，记录了IMU模块的完整状态（不含中断）<br>
+<br>
 
-执行以下命令获取项目 IMU 驱动代码并编译 I2C 传感器驱动：
+- `struct imu_data`:<br>
+- IMU数据结构体，用于格式化存储imu数据包的完整数据<br>
+<br>
 
-```shell
-git clone https://github.com/D-Robotics/hobot_imu_sensor.git
-cd hobot_imu_sensor
-source /opt/tros/setup.bash
-pip install -U colcon-common-extensions
-colcon build --packages-select imu_sensor
+- `struct imu_state RDK_IMU_Get_Initial_State()`:<br>
+- 初始化结构体`imu_state`的标准方式<br>
+    - `return`: 默认状态的`imu_state`结构体，使用一个`struct imu_state`类型变量来接收它<br>
+<br>
+
+- `struct imu_data RDK_IMU_Get_Initial_Data()`: 初始化结构体`imu_data`的标准方式<br>
+    - `return`: 默认状态的`imu_data`结构体，使用一个`struct imu_data`类型变量来接收它<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_All_Device_Scan(`
+- &emsp;`struct imu_state *st)`:<br> 
+- IMU设备扫描函数,支持I2C/SPI自动检测，支持I2C全总线全地址自动扫描<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Accel_Pwr_Set(`
+- &emsp;`struct imu_state *st,`
+- &emsp;`enum bmi088_acc_pwr_mode pwr_mode)`:<br>
+- 加速度计电源模式设置<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `pwr_mode`: `enum bmi088_acc_pwr_mode`类型，可选值如下：<br>
+        - `ACC_PWR_OFF`: 关闭电源<br>
+        - `ACC_PWR_SUSPEND`: 挂起<br>
+        - `ACC_PWR_ON`: 启动<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Gyro_Pwr_Set(`<br>
+- &emsp;`struct imu_state *st,`<br>
+- &emsp;`enum bmi088_gyro_lpm1 pwr_mode)`:<br>
+- 陀螺仪电源模式设置<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `pwr_mode`: `enum bmi088_gyro_lpm1`类型，可选值如下：<br>
+        - `GYRO_LPM1_NORMAL`: 启动<br>
+        - `GYRO_LPM1_SUSPEND`: 挂起<br>
+        - `GYRO_LPM1_DEEP_SUSPEND`: 深度挂起<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Accel_Config(`<br>
+- &emsp;`struct imu_state *st,`<br>
+- &emsp;`enum bmi088_acc_range range,`<br>
+- &emsp;`enum bmi088_acc_bwp bwp,`<br>
+- &emsp;`enum bmi088_acc_odr odr)`<br>
+- 加速度计配置<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `range`: 加速度计量程，`bmi088_acc_range`类型，可选值如下：<br>
+        - `ACC_RANGE_3G`<br>
+        - `ACC_RANGE_6G`<br>
+        - `ACC_RANGE_12G`<br>
+        - `ACC_RANGE_24G`<br>
+    - `bwp`: 加速度计滤波设置，`bmi088_acc_bwp`类型，可选值如下：<br>
+        - `ACC_BWP_OSR4`<br>
+        - `ACC_BWP_OSR2`<br>
+        - `ACC_BWP_NORMAL`<br>
+    - `odr`: 加速度计输出频率设置，`bmi088_acc_odr`类型，可选值如下：<br>
+        - `ACC_ODR_12_5_HZ`<br>
+        - `ACC_ODR_25_HZ`<br>
+        - `ACC_ODR_50_HZ`<br>
+        - `ACC_ODR_100_HZ`<br>
+        - `ACC_ODR_200_HZ`<br>
+        - `ACC_ODR_400_HZ`<br>
+        - `ACC_ODR_800_HZ`<br>
+        - `ACC_ODR_1600_HZ`<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Gyro_Config(`<br>
+- &emsp;`struct imu_state *st, `<br>
+- &emsp;`enum bmi088_gyro_range range,`<br>
+- &emsp;`enum bmi088_gyro_bandwidth bandwidth)`:<br>
+- 陀螺仪配置<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `range`: 陀螺仪量程，`bmi088_gyro_range`类型，可选值如下：<br>
+        - `GYRO_RANGE_2000DPS`<br>
+        - `GYRO_RANGE_1000DPS`<br>
+        - `GYRO_RANGE_500DPS`<br>
+        - `GYRO_RANGE_250DPS`<br>
+        - `GYRO_RANGE_125DPS`<br>
+    - `bandwidth`: 陀螺仪ODR与带宽，`bmi088_gyro_bandwidth`类型，可选值如下：<br>
+        - `GYRO_ODR_2000HZ_BANDWIDTH_532HZ`<br>
+        - `GYRO_ODR_2000HZ_BANDWIDTH_230HZ`<br>
+        - `GYRO_ODR_1000HZ_BANDWIDTH_116HZ`<br>
+        - `GYRO_ODR_400HZ_BANDWIDTH_47HZ`<br>
+        - `GYRO_ODR_200HZ_BANDWIDTH_23HZ`<br>
+        - `GYRO_ODR_100HZ_BANDWIDTH_12HZ`<br>
+        - `GYRO_ODR_200HZ_BANDWIDTH_64HZ`<br>
+        - `GYRO_ODR_100HZ_BANDWIDTH_32HZ`<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Accel_Reset(`<br>
+- &emsp;`struct imu_state *st)`:<br>
+- 加速度计软件复位<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Gyro_Reset(`<br>
+- &emsp;`struct imu_state *st)`:<br>
+- 陀螺仪软件复位<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+    - 当imu工作在i2c模式下时，该函数无法成功使能陀螺仪复位，但可以使用`DK_IMU_Gyro_Pwr_Set`函数让陀螺仪进入深度挂起模式，以达到软件复位的作用<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Read(`
+- &emsp;`struct imu_state *st,`
+- &emsp;`struct imu_data *data)`:
+- IMU数据读取<br>
+    - `*st`: `struct imu_state`类型指针<br>
+    - `*data`: `struct imu_data`类型指针<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+### **4.3.gpio接口说明**
+
+- `enum rdk_imu_error RDK_IMU_GPIO_Init()`:<br>
+- GPIO初始化<br>
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_GPIO_Enable(`<br>
+- &emsp;`enum rdk_imu_gpio_sel gpio_sel)`:<br>
+- 使能选定的io设备<br>
+    - `gpio_sel`: io管脚选择掩码
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_GPIO_Disable(`<br>
+- &emsp;`enum rdk_imu_gpio_sel gpio_sel)`:<br>
+- 关闭选定的io设备<br>
+    - `gpio_sel`: io管脚选择掩码
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+- `enum rdk_imu_error RDK_IMU_Get_DS18B20_Temp(`<br>
+- &emsp;`float *temp)`:<br>
+- 虚拟1-wire总线向板载温度传感器获取温度数据
+    - `*temp`: 浮点型温度数据指针
+    - `return`: `enum rdk_imu_error`错误码<br>
+<br>
+
+## **五、Python接口介绍**
+
+&emsp;在`RDK_IMU_Module_us/Py_RDK_IMU/Py_RDK_IMU.pyx`中，使用了Cython混编将`RDK_IMU_Module_us/src/rdk_imu_module_data.c`和`RDK_IMU_Module_us/src/rdk_imu_module_gpio.c`的实现封装成了Python的API，为了保持接口一致性，Cython封装中不将data和gpio两个模块分开，合并为同一个库中的不同类<br>
+
+### **5.1.RDK_IMU类介绍**
+
+#### **5.1.1.构造函数**
+
+&emsp;RDK_IMU类的构造函数中进行了内部成员imu_st和imu_dt两个结构体的初始化<br>
+
+#### **5.1.2.设备扫描函数：`RDK_IMU.Device_Scan()`**
+&emsp;无参方法，返回一个具有2个元素的元组:<br>
+- `return[0]`: 布尔值，是否成功扫描到设备<br>
+- `return[1]`: 设备地址信息字典<br>
+
+#### **5.1.3.软件复位函数：`RDK_IMU.Accel_Reset()`/`RDK_IMU.Gyro_Reset()`**
+&emsp;无参方法，返回布尔值，表示软件复位是否成功<br>
+&emsp;其中，`RDK_IMU.Gyro_Reset()`继承了C实现的特性：在i2c模式下无法正确复位<br>
+
+#### **5.1.4.电源设置函数：`RDK_IMU.Set_Pwr_Mode(accel_pwr, gyro_pwr)`**
+&emsp;`accel_pwr`参数需检查类型是否为`Accel_Pwr`枚举类，枚举如下：<br>
+```python
+@unique
+class Accel_Pwr(Enum):
+    pwr_on = "on"
+    pwr_suspend = "suspend"
+    pwr_off = "off"
+```
+&emsp;`gyro_pwr`参数需检查类型是否为`Gyro_Pwr`枚举类，枚举如下：<br>
+```python
+@unique
+class Gyro_Pwr(Enum):
+    pwr_on = "on"
+    pwr_suspend = "suspend"
+    pwr_deepsuspend = "deepsuspend"
+```
+&emsp;返回值为布尔值，表示是否设置成功<br>
+
+#### **5.1.5.加速度计配置函数:`RDK_IMU.Accel_Config()`**
+
+&emsp;可以无参调用，未指定的参数将选择默认值<br>
+
+&emsp;可选参数-`range`:加速度量程，类型检查为`Accel_Range`枚举类，枚举如下：<br>
+```python
+@unique
+class Accel_Range(Enum):
+    _3g = 3.0
+    _6g = 6.0
+    _12g = 12.0
+    _24g = 24.0 # 默认值
 ```
 
-上述命令会从 GitHub 拉取代码库，并使用 colcon 工具构建 imu_sensor 包
-
-3. **安装驱动模块**：
-
-进入 imu 文件夹后，执行以下命令，将编译好的模块安装到系统中：
-
-```shell
-dpkg -i hobot-*.deb
-cp bmi088.ko /lib/modules/4.14.87
+&emsp;可选参数-`bwp`:加速度滤波设置，类型检查为`Accel_Bwp`枚举类，枚举如下：<br>
+```python
+@unique
+class Accel_Bwp(Enum):
+    osr4 = "osr4"
+    osr2 = "osr2"
+    normal = "normal" # 默认值
 ```
 
-4. **加载驱动并启动 ROS2 节点**：
-
-重新上电后，执行以下步骤来加载 BMI088 模块并启动 ROS2 节点：
-
-**在终端1**：
-
-```shell
-depmod -a 
-modprobe bmi088
-source /opt/tros/setup.bash
-source hobot_imu_sensor/install/setup.bash
-ros2 launch imu_sensor imu_sensor.launch.py
+&emsp;可选参数-`odr`:加速度滤波设置，类型检查为`Accel_Odr`枚举类，枚举如下：<br>
+```python
+@unique
+class Accel_Odr(Enum):
+    _12_5hz = 12.5
+    _25hz = 25.0
+    _50hz = 50.0
+    _100hz = 100.0
+    _200hz = 200.0
+    _400hz = 400.0
+    _800hz = 800.0
+    _1600hz = 1600.0 # 默认值
 ```
 
-该操作将会启动 imu_sensor 节点，驱动 BMI088 传感器并开始发布传感器数据。
+&emsp;返回值为布尔值，表示是否设置成功<br>
 
-5. **查看 IMU 数据**：
+&emsp;例如，设置加速度计量程为6g、bwp为osr2、odr为200hz：<br>
+```python
+import rdkimu
 
-在另一个终端（终端2）中，使用以下命令订阅并查看 IMU 数据：
+imu = rdkimu.RDK_IMU()
+...
+...
+ret = imu.Accel_Config(
+    range=rdkimu.Accel_Range._6g,
+    bwp=rdkimu.Accel_Bwp.osr2,
+    odr=rdkimu.Accel_Odr._200hz)
 
-```shell
-source /opt/tros/setup.bash
-ros2 topic echo /imu_data
+if ret:
+    # 设置成功
+    pass
+else:
+    pass
 ```
 
-正常情况下，终端2将会显示 BMI088 传感器的实时数据输出，如下图所示：
+#### **5.1.6.陀螺仪配置函数:`RDK_IMU.Gyro_Config()`**
 
-![alt text](./data/imu_i2c.png)
+&emsp;可以无参调用，未指定的参数将选择默认值<br>
 
-**注意事项**：
-- **I2C 接口设置**： 使用 I2C 读取传感器数据时，确保拨码开关已正确切换至 I2C 模式。
-- **环境配置**： 确保系统已安装必要的 ROS2 环境、colcon 构建工具以及相关驱动程序
-
-
-## 5. DS18B20 温度传感器读取方式
-
-DS18B20 温度传感器可以通过编译并运行 C 代码来读取其温度数据，具体操作如下：：
-
-1. **编译 DS18B20 代码**：
-
-在终端中执行以下命令，使用 gcc 编译 DS18B20 温度传感器的 C 代码：
-
-```shell
-gcc -o ds18b20 ds18b20.c -lwiringPi
+&emsp;可选参数-`range`:陀螺仪量程，类型检查为`Gyro_Range`枚举类，枚举如下：<br>
+```python
+@unique
+class Gyro_Range(Enum):
+    _2000dps = 2000.0 # 默认值
+    _1000dps = 1000.0
+    _500dps = 500.0
+    _250dps = 250.0
+    _125dps = 125.0
 ```
 
-此命令将 ds18b20.c 文件编译为可执行文件 ds18b20，并链接所需的 WiringPi 库。
-
-2. **运行可执行文件**：
-
-编译成功后，通过以下命令运行生成的可执行文件并读取温度数据：
-
-```shell
-sudo ./ds18b20
+&emsp;可选参数-`odr_bwp`:陀螺仪ODR与滤波设置，类型检查为`Gyro_Odr_Bwp`枚举类，枚举如下：<br>
+```python
+@unique
+class Gyro_Odr_Bwp(Enum):
+    _2000hz_532hz = (2000.0, 532.0) # 默认值
+    _2000hz_230hz = (2000.0, 230.0)
+    _1000hz_116hz = (1000.0, 116.0)
+    _400hz_47hz = (400.0, 47.0)
+    _200hz_23hz = (200.0, 23.0)
+    _100hz_12hz = (100.0, 12.0)
+    _200hz_64hz = (200.0, 64.0)
+    _100hz_32hz = (100.0, 32.0)
 ```
 
-运行成功后，终端将输出 DS18B20 传感器的实时温度数据，显示结果如下图所示：
+&emsp;返回值为布尔值，表示是否设置成功<br>
 
-![alt text](./data/Temperature.png)
+&emsp;例如，设置陀螺仪量程为500dps、odr为400hz、带宽为47hz：<br>
+```python
+import rdkimu
 
-**注意事项**
-- 权限要求： 由于读取硬件数据需要更高的权限，请使用 sudo 命令运行可执行文件。
-- 传感器连接： 确保 DS18B20 传感器正确连接到开发板上的 GPIO 引脚，并已添加适当的上拉电阻（已硬件上拉）。
+imu = rdkimu.RDK_IMU()
+...
+...
+ret = imu.Accel_Config(
+    range=rdkimu.Gyro_Range._500dps,
+    odr_bwp=rdkimu.Gyro_Odr_Bwp._400hz_47hz)
+
+if ret:
+    # 设置成功
+    pass
+else:
+    pass
+```
+
+#### **5.1.7.IMU状态获取函数:`RDK_IMU.Get_IMU_Info()`**
+
+&emsp;无参方法，返回一个包含：加速度计/陀螺仪电源模式、量程、ODR频率、滤波设置等信息的字典<br>
+
+#### **5.1.8.IMU数据更新函数:`RDK_IMU.Data_Update()`**
+
+&emsp;无参方法，返回值为二元素元组，说明如下：<br>
+- return[0]: bool值，是否更新成功<br>
+- return[1]: 错误码<br>
+
+#### **5.1.9.IMU数据包读取函数:`RDK_IMU.Data_Read()`**
+
+&emsp;无参方法，返回一个包含IMU6轴信息和温度、时间戳信息的字典<br>
+
+### **5.2.RDK_IMU_GPIO类介绍**
+
+#### **5.2.1.构造函数**
+
+&emsp;`RDK_IMU_GPIO`类实例化时会在构造函数中完成GPIO设备的初始化，如果初始化设备将抛出`RuntimeError`错误
+
+#### **5.2.2.板载温度读取函数：`RDK_IMU_GPIO.Get_Board_Temp()`**
+
+&emsp;无参方法，该方法调用软件1-wire总线读取板载温度传感器数据并解析，返回值为二元元组，说明如下：<br>
+- `return[0]`: bool值，是否读取成功<br>
+- `return[1]`: 浮点数，板载温度值，单位为摄氏度<br>
+
+#### **5.2.3.GPIO控制函数：`RDK_IMU_GPIO.GPIO_Ctrl()`**
+
+&emsp;该方法可以无参调用，但是不会发生任何实际操作，因为所有参数的默认值均为“保持IO状态不变”<br>
+
+&emsp;函数拥有4个形参：`led_r_st`、`led_b_st`、`led_g_st`和`bell_st`，类型检查均为`GPIO_State`枚举类，定义如下：<br>
+```python
+@unique
+class GPIO_State(Enum):
+    _open = "open"
+    _close = "close"
+    _hold_on = "hold on"
+```
+
+&emsp;通过指定参数，可以控制任一GPIO设备启动、关闭、或是保持，例如，控制红色LED关闭，蜂鸣器启动，其他设备保持：<br>
+```python
+import rdkimu
+
+imu_gpio = rdkimu.RDK_IMU_GPIO()
+...
+...
+imu_gpio.GPIO_Ctrl(led_r_st=GPIO_State._close, bell_st=GPIO_State._open)
+
+```
+
+### **5.3.其他**
+
+&emsp;其他方法函数介绍请查阅`.pyx`文件中的具体实现<br>
+
+&emsp;**！！！二次开发前务必参考测试用例！！！**<br>
+
+## **六、版本信息**
+- 项目发布时间：2026-1-19
+- 项目版本：v1.0.0
+- 版本时间：2026-1-19
+- 项目最后更改时间：2026-1-20
+- README.md最后更改时间：2026-1-20
+
+## ———— *END* ————
